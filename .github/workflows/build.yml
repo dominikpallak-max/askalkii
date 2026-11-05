@@ -25,8 +25,256 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v4
+      - name: Create mod source files
+        run: |
+          mkdir -p src/main/java/com/askalki src/main/resources
+
+          cat > src/main/resources/fabric.mod.json << 'EOF'
+          {
+            "schemaVersion": 1,
+            "id": "askalki",
+            "version": "1.0.0",
+            "name": "Askalki",
+            "description": "Szybkie podnoszenie itemow z ziemi z GUI pod /askalki",
+            "environment": "client",
+            "entrypoints": {
+              "client": [
+                "com.askalki.AskalkiMod"
+              ]
+            },
+            "depends": {
+              "fabricloader": ">=0.16.0",
+              "minecraft": "1.21.11",
+              "java": ">=21",
+              "fabric-api": "*"
+            }
+          }
+          EOF
+
+          cat > src/main/java/com/askalki/Settings.java << 'EOF'
+          package com.askalki;
+
+          public class Settings {
+              public static boolean masterEnabled = true;
+              public static boolean fastPickup = true;
+              public static int delayMs = 1000;
+              public static boolean instantOnLand = false;
+              public static boolean sprintToItem = true;
+          }
+          EOF
+
+          cat > src/main/java/com/askalki/AskalkiMod.java << 'EOF'
+          package com.askalki;
+
+          import com.mojang.brigadier.Command;
+          import net.fabricmc.api.ClientModInitializer;
+          import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+          import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+          import net.minecraft.client.MinecraftClient;
+
+          public class AskalkiMod implements ClientModInitializer {
+              @Override
+              public void onInitializeClient() {
+                  ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
+                      dispatcher.register(ClientCommandManager.literal("askalki")
+                          .executes(ctx -> {
+                              MinecraftClient client = MinecraftClient.getInstance();
+                              client.send(() -> client.setScreen(new AskalkiScreen()));
+                              return Command.SINGLE_SUCCESS;
+                          })));
+
+                  AutoPickup.init();
+              }
+          }
+          EOF
+
+          cat > src/main/java/com/askalki/AskalkiScreen.java << 'EOF'
+          package com.askalki;
+
+          import net.minecraft.client.gui.DrawContext;
+          import net.minecraft.client.gui.screen.Screen;
+          import net.minecraft.client.gui.widget.ButtonWidget;
+          import net.minecraft.text.Text;
+
+          public class AskalkiScreen extends Screen {
+
+              public AskalkiScreen() {
+                  super(Text.literal("Askalki"));
+              }
+
+              @Override
+              protected void init() {
+                  int cx = width / 2 - 100;
+                  int y = height / 2 - 80;
+
+                  ButtonWidget master = ButtonWidget.builder(label("Wszystko", Settings.masterEnabled), null)
+                      .dimensions(cx, y, 200, 20).build();
+                  master.setPressAction(b -> {
+                      Settings.masterEnabled = !Settings.masterEnabled;
+                      b.setMessage(label("Wszystko", Settings.masterEnabled));
+                  });
+                  addDrawableChild(master);
+
+                  ButtonWidget fast = ButtonWidget.builder(label("Szybkie podnoszenie", Settings.fastPickup), null)
+                      .dimensions(cx, y + 30, 200, 20).build();
+                  fast.setPressAction(b -> {
+                      Settings.fastPickup = !Settings.fastPickup;
+                      b.setMessage(label("Szybkie podnoszenie", Settings.fastPickup));
+                  });
+                  addDrawableChild(fast);
+
+                  addDrawableChild(new DelaySlider(cx, y + 60, 200, 20));
+
+                  ButtonWidget land = ButtonWidget.builder(label("Złap od razu po wylądowaniu", Settings.instantOnLand), null)
+                      .dimensions(cx, y + 90, 200, 20).build();
+                  land.setPressAction(b -> {
+                      Settings.instantOnLand = !Settings.instantOnLand;
+                      b.setMessage(label("Złap od razu po wylądowaniu", Settings.instantOnLand));
+                  });
+                  addDrawableChild(land);
+
+                  ButtonWidget sprint = ButtonWidget.builder(label("Biegnij do itemu (sprint)", Settings.sprintToItem), null)
+                      .dimensions(cx, y + 120, 200, 20).build();
+                  sprint.setPressAction(b -> {
+                      Settings.sprintToItem = !Settings.sprintToItem;
+                      b.setMessage(label("Biegnij do itemu (sprint)", Settings.sprintToItem));
+                  });
+                  addDrawableChild(sprint);
+              }
+
+              private static Text label(String name, boolean on) {
+                  return Text.literal(name + ": " + (on ? "ON" : "OFF"));
+              }
+
+              @Override
+              public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+                  super.render(ctx, mouseX, mouseY, delta);
+                  ctx.drawCenteredTextWithShadow(textRenderer, "Askalki", width / 2, height / 2 - 100, 0xFFFFFF);
+              }
+
+              @Override
+              public boolean shouldPause() {
+                  return false;
+              }
+          }
+          EOF
+
+          cat > src/main/java/com/askalki/DelaySlider.java << 'EOF'
+          package com.askalki;
+
+          import net.minecraft.client.gui.widget.SliderWidget;
+          import net.minecraft.text.Text;
+
+          public class DelaySlider extends SliderWidget {
+              private static final int MAX_MS = 10000;
+
+              public DelaySlider(int x, int y, int w, int h) {
+                  super(x, y, w, h, Text.empty(), Settings.delayMs / (double) MAX_MS);
+                  updateMessage();
+              }
+
+              @Override
+              protected void updateMessage() {
+                  setMessage(Text.literal(String.format("Opóźnienie: %.1f s", Settings.delayMs / 1000.0)));
+              }
+
+              @Override
+              protected void applyValue() {
+                  Settings.delayMs = (int) Math.round(this.value * MAX_MS);
+              }
+          }
+          EOF
+
+          cat > src/main/java/com/askalki/AutoPickup.java << 'EOF'
+          package com.askalki;
+
+          import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents;
+          import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+          import net.minecraft.client.MinecraftClient;
+          import net.minecraft.entity.ItemEntity;
+          import net.minecraft.entity.player.PlayerEntity;
+
+          import java.util.HashMap;
+          import java.util.Map;
+          import java.util.UUID;
+
+          public class AutoPickup {
+              private static final double RANGE = 8.0;
+              private static final double PICK_DISTANCE = 0.6;
+
+              private static final Map<UUID, Long> spawnTimes = new HashMap<>();
+              private static boolean controlling = false;
+
+              public static void init() {
+                  ClientEntityEvents.ENTITY_LOAD.register((entity, world) -> {
+                      if (entity instanceof ItemEntity) {
+                          spawnTimes.put(entity.getUuid(), System.currentTimeMillis());
+                      }
+                  });
+                  ClientEntityEvents.ENTITY_UNLOAD.register((entity, world) -> spawnTimes.remove(entity.getUuid()));
+                  ClientTickEvents.END_CLIENT_TICK.register(AutoPickup::tick);
+              }
+
+              private static void tick(MinecraftClient client) {
+                  if (client.player == null || client.world == null) {
+                      spawnTimes.clear();
+                      controlling = false;
+                      return;
+                  }
+
+                  if (!Settings.masterEnabled || !Settings.fastPickup) {
+                      release(client);
+                      return;
+                  }
+
+                  PlayerEntity p = client.player;
+                  ItemEntity target = null;
+                  double best = Double.MAX_VALUE;
+                  long now = System.currentTimeMillis();
+
+                  for (ItemEntity item : client.world.getEntitiesByClass(ItemEntity.class,
+                          p.getBoundingBox().expand(RANGE), e -> true)) {
+                      Long born = spawnTimes.get(item.getUuid());
+                      if (born == null) continue;
+
+                      long age = now - born;
+                      boolean ready = Settings.instantOnLand
+                              ? (item.isOnGround() || age >= Settings.delayMs)
+                              : age >= Settings.delayMs;
+                      if (!ready) continue;
+
+                      double d = p.distanceTo(item);
+                      if (d < best) {
+                          best = d;
+                          target = item;
+                      }
+                  }
+
+                  if (target == null || best < PICK_DISTANCE) {
+                      release(client);
+                      return;
+                  }
+
+                  double dx = target.getX() - p.getX();
+                  double dz = target.getZ() - p.getZ();
+                  float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+                  p.setYaw(yaw);
+                  p.setPitch(0);
+
+                  client.options.forwardKey.setPressed(true);
+                  client.options.sprintKey.setPressed(Settings.sprintToItem);
+                  controlling = true;
+              }
+
+              private static void release(MinecraftClient client) {
+                  if (controlling) {
+                      client.options.forwardKey.setPressed(false);
+                      client.options.sprintKey.setPressed(false);
+                      controlling = false;
+                  }
+              }
+          }
+          EOF
 
       - name: Build
         run: ./gradlew build --no-daemon
