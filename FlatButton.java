@@ -1,26 +1,31 @@
 package pl.fullbright;
 
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 
-public class FlatButton extends ButtonWidget {
-    private boolean selected;
-
-    public FlatButton(int x, int y, int w, int h, Text text, PressAction action) {
-        super(x, y, w, h, text, action, DEFAULT_NARRATION_SUPPLIER);
+/** Pomocnik do przycisków (zwykłe ButtonWidget z buildera - działa na 1.21.11). */
+public class FlatButton {
+    private static Text label(String s, boolean selected) {
+        MutableText t = Text.literal(s);
+        return selected ? t.formatted(Formatting.AQUA, Formatting.BOLD) : t;
     }
 
-    public FlatButton selected(boolean s) { this.selected = s; return this; }
+    public static ButtonWidget btn(int x, int y, int w, int h, String text, boolean selected,
+                                   ButtonWidget.PressAction action) {
+        return ButtonWidget.builder(label(text, selected), action).dimensions(x, y, w, h).build();
+    }
 
-    @Override
-    protected void renderWidget(DrawContext c, int mx, int my, float delta) {
-        int bg = selected ? 0xFF2F6FD6 : isHovered() ? 0xFF3A4050 : 0xFF262A36;
-        c.fill(getX(), getY(), getX() + getWidth(), getY() + getHeight(), bg);
-        c.drawBorder(getX(), getY(), getWidth(), getHeight(), selected ? 0xFF7DB3FF : 0xFF3A4050);
-        var tr = MinecraftClient.getInstance().textRenderer;
-        c.drawCenteredTextWithShadow(tr, getMessage(), getX() + getWidth() / 2,
-                getY() + (getHeight() - 8) / 2, 0xFFFFFFFF);
+    public static void mark(ButtonWidget b, String text, boolean selected) {
+        b.setMessage(label(text, selected));
+    }
+
+    public static void border(DrawContext c, int x, int y, int w, int h, int color) {
+        c.fill(x, y, x + w, y + 1, color);
+        c.fill(x, y + h - 1, x + w, y + h, color);
+        c.fill(x, y, x + 1, y + h, color);
+        c.fill(x + w - 1, y, x + w, y + h, color);
     }
 }

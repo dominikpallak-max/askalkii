@@ -2,6 +2,7 @@ package pl.fullbright;
 
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.item.Item;
@@ -31,7 +32,7 @@ public class MenuScreen extends Screen {
     final List<Cell> gridCells = new ArrayList<>();
     final List<ClickableWidget> gridWidgets = new ArrayList<>();
     List<Item> filtered = new ArrayList<>();
-    FlatButton toggleBtn;
+    ButtonWidget toggleBtn;
 
     public MenuScreen() { super(Text.literal("FullBright")); }
 
@@ -52,10 +53,10 @@ public class MenuScreen extends Screen {
         String[] names = {"Lista", "Dodaj", "AutoRynek", "Config"};
         for (int i = 0; i < 4; i++) {
             final int t = i;
-            addDrawableChild(new FlatButton(px + 10 + i * 90, py + 28, 86, 18, Text.literal(names[i]),
-                    b -> { tab = t; editing = null; selItem = null; status = ""; clearAndInit(); }).selected(tab == i));
+            addDrawableChild(FlatButton.btn(px + 10 + i * 90, py + 28, 86, 18, names[i], tab == i,
+                    b -> { tab = t; editing = null; selItem = null; status = ""; clearAndInit(); }));
         }
-        toggleBtn = new FlatButton(px + W - 122, py + 3, 116, 16, Text.empty(), b -> {
+        toggleBtn = FlatButton.btn(px + W - 122, py + 3, 116, 16, "", false, b -> {
             if (!Config.get().enabled) AutoBuyer.start(); else AutoBuyer.stop();
             refreshToggle();
         });
@@ -73,8 +74,7 @@ public class MenuScreen extends Screen {
 
     void refreshToggle() {
         boolean on = Config.get().enabled;
-        toggleBtn.setMessage(Text.literal("AutoRynek: " + (on ? "ON" : "OFF")));
-        toggleBtn.selected(on);
+        FlatButton.mark(toggleBtn, "AutoRynek: " + (on ? "ON" : "OFF"), on);
     }
 
     TextFieldWidget field(int x, int y, int w, String val, Consumer<String> onChange) {
@@ -112,19 +112,16 @@ public class MenuScreen extends Screen {
                     + (e.nameContains.isEmpty() ? "" : " [" + e.nameContains + "]"), 0xFFFFFFFF));
             labels.add(new Label(px + 38, y + 12, "Min " + PriceParser.format(e.min)
                     + "  -  Max " + PriceParser.format(e.max), 0xFF9AA4B2));
-            addDrawableChild(new FlatButton(px + W - 160, y + 3, 36, 16, Text.literal(e.enabled ? "ON" : "OFF"),
-                    b -> { e.enabled = !e.enabled; Config.save(); clearAndInit(); }).selected(e.enabled));
-            addDrawableChild(new FlatButton(px + W - 120, y + 3, 56, 16, Text.literal("Edytuj"), b -> {
+            addDrawableChild(FlatButton.btn(px + W - 160, y + 3, 36, 16, e.enabled ? "ON" : "OFF", e.enabled,
+                    b -> { e.enabled = !e.enabled; Config.save(); clearAndInit(); }));
+            addDrawableChild(FlatButton.btn(px + W - 120, y + 3, 56, 16, "Edytuj", false, b -> {
                 editing = e; eMin = PriceParser.format(e.min); eMax = PriceParser.format(e.max);
                 eName = e.nameContains; clearAndInit();
             }));
-            addDrawableChild(new FlatButton(px + W - 60, y + 3, 46, 16, Text.literal("Usuń"),
-                    b -> { es.remove(e); Config.save(); clearAndInit(); }));
+            addDrawableChild(FlatButton.btn(px + W - 60, y + 3, 46, 16, "Usuń", false, b -> { es.remove(e); Config.save(); clearAndInit(); }));
         }
-        addDrawableChild(new FlatButton(px + 14, py + H - 34, 40, 16, Text.literal("<"),
-                b -> { if (listPage > 0) { listPage--; clearAndInit(); } }));
-        addDrawableChild(new FlatButton(px + W - 54, py + H - 34, 40, 16, Text.literal(">"),
-                b -> { if (listPage < listPages - 1) { listPage++; clearAndInit(); } }));
+        addDrawableChild(FlatButton.btn(px + 14, py + H - 34, 40, 16, "<", false, b -> { if (listPage > 0) { listPage--; clearAndInit(); } }));
+        addDrawableChild(FlatButton.btn(px + W - 54, py + H - 34, 40, 16, ">", false, b -> { if (listPage < listPages - 1) { listPage++; clearAndInit(); } }));
         pageText = (listPage + 1) + "/" + listPages;
     }
 
@@ -136,10 +133,8 @@ public class MenuScreen extends Screen {
         f.setText(search);
         f.setChangedListener(s -> { search = s; gridPage = 0; rebuildGrid(); });
         addDrawableChild(f);
-        addDrawableChild(new FlatButton(px + 14, py + H - 34, 40, 16, Text.literal("<"),
-                b -> { if (gridPage > 0) { gridPage--; rebuildGrid(); } }));
-        addDrawableChild(new FlatButton(px + W - 54, py + H - 34, 40, 16, Text.literal(">"),
-                b -> { if (gridPage < gridPages - 1) { gridPage++; rebuildGrid(); } }));
+        addDrawableChild(FlatButton.btn(px + 14, py + H - 34, 40, 16, "<", false, b -> { if (gridPage > 0) { gridPage--; rebuildGrid(); } }));
+        addDrawableChild(FlatButton.btn(px + W - 54, py + H - 34, 40, 16, ">", false, b -> { if (gridPage < gridPages - 1) { gridPage++; rebuildGrid(); } }));
         rebuildGrid();
     }
 
@@ -162,7 +157,7 @@ public class MenuScreen extends Screen {
             if (idx >= filtered.size()) break;
             final Item it = filtered.get(idx);
             int x = px + 12 + (k % cols) * 25, y = py + 76 + (k / cols) * 23;
-            FlatButton b = new FlatButton(x, y, 23, 22, Text.empty(), bb -> {
+            ButtonWidget b = FlatButton.btn(x, y, 23, 22, "", false, bb -> {
                 selItem = it; eMin = "0"; eMax = "1m"; eName = ""; clearAndInit();
             });
             addDrawableChild(b);
@@ -185,7 +180,7 @@ public class MenuScreen extends Screen {
         field(px + 200, py + 100, 166, eMax, s -> eMax = s);
         label(px + 14, py + 128, "Nazwa zawiera (opcjonalnie, dla itemów serwerowych)");
         field(px + 14, py + 140, W - 28, eName, s -> eName = s);
-        addDrawableChild(new FlatButton(px + 14, py + H - 52, 110, 18, Text.literal(editing != null ? "Zapisz" : "Dodaj"), b -> {
+        addDrawableChild(FlatButton.btn(px + 14, py + H - 52, 110, 18, editing != null ? "Zapisz" : "Dodaj", true, b -> {
             long mn = PriceParser.parseNumber(eMin), mx = PriceParser.parseNumber(eMax);
             if (mn < 0 || mx < 0) { status = "Błędna wartość min/max"; return; }
             if (mn > mx) { status = "Min nie może być większe niż Max"; return; }
@@ -199,9 +194,8 @@ public class MenuScreen extends Screen {
             Config.save();
             editing = null; selItem = null; tab = 0; status = "Zapisano";
             clearAndInit();
-        }).selected(true));
-        addDrawableChild(new FlatButton(px + 134, py + H - 52, 90, 18, Text.literal("Anuluj"),
-                b -> { editing = null; selItem = null; status = ""; clearAndInit(); }));
+        }));
+        addDrawableChild(FlatButton.btn(px + 134, py + H - 52, 90, 18, "Anuluj", false, b -> { editing = null; selItem = null; status = ""; clearAndInit(); }));
     }
 
     // ---------------- USTAWIENIA AUTORYNKU ----------------
@@ -211,7 +205,7 @@ public class MenuScreen extends Screen {
         intField(px + 14, py + 66, 160, c.pageDelayMs, v -> c.pageDelayMs = v);
         label(px + 14, py + 90, "Kupowanie itemu (ms)");
         intField(px + 14, py + 102, 160, c.buyDelayMs, v -> c.buyDelayMs = v);
-        addDrawableChild(new FlatButton(px + 14, py + 128, 160, 18, Text.literal("Kierunek: " + dirName(c.direction)), b -> {
+        addDrawableChild(FlatButton.btn(px + 14, py + 128, 160, 18, "Kierunek: " + dirName(c.direction), false, b -> {
             c.direction = switch (c.direction) { case "RIGHT" -> "LEFT"; case "LEFT" -> "BOUNCE"; default -> "RIGHT"; };
             b.setMessage(Text.literal("Kierunek: " + dirName(c.direction)));
         }));
@@ -234,14 +228,12 @@ public class MenuScreen extends Screen {
     // ---------------- CONFIG ----------------
     void buildConfig() {
         label(px + 14, py + 56, "Plik: " + Config.path().getFileName());
-        addDrawableChild(new FlatButton(px + 14, py + 74, 160, 20, Text.literal("Zapisz config"),
-                b -> { Config.save(); status = "Zapisano config"; }));
-        addDrawableChild(new FlatButton(px + 14, py + 100, 160, 20, Text.literal("Wczytaj config"), b -> {
+        addDrawableChild(FlatButton.btn(px + 14, py + 74, 160, 20, "Zapisz config", false, b -> { Config.save(); status = "Zapisano config"; }));
+        addDrawableChild(FlatButton.btn(px + 14, py + 100, 160, 20, "Wczytaj config", false, b -> {
             status = Config.load() ? "Wczytano config" : "Błąd wczytywania";
             clearAndInit();
         }));
-        addDrawableChild(new FlatButton(px + 14, py + 126, 160, 20, Text.literal("Reset do domyślnych"),
-                b -> { Config.reset(); status = "Zresetowano"; clearAndInit(); }));
+        addDrawableChild(FlatButton.btn(px + 14, py + 126, 160, 20, "Reset do domyślnych", false, b -> { Config.reset(); status = "Zresetowano"; clearAndInit(); }));
         label(px + 14, py + 156, "Ścieżka: " + Config.path());
     }
 
@@ -250,7 +242,7 @@ public class MenuScreen extends Screen {
         c.fill(0, 0, width, height, 0xB0000000);
         c.fill(px, py, px + W, py + H, 0xFF14161C);
         c.fill(px, py, px + W, py + 22, 0xFF1C2030);
-        c.drawBorder(px, py, W, H, 0xFF3B82F6);
+        FlatButton.border(c, px, py, W, H, 0xFF3B82F6);
         c.drawTextWithShadow(textRenderer, "FullBright", px + 8, py + 7, 0xFF7DB3FF);
         super.render(c, mx, my, d);
 

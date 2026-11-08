@@ -4,7 +4,7 @@ import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.Screens;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.widget.ButtonWidget;
 
 import java.util.Locale;
 
@@ -17,9 +17,9 @@ public class MarketOverlay {
             if (!title.contains(Config.get().marketTitle.toLowerCase(Locale.ROOT))) return;
 
             int bw = 64, gap = 4, x = (w - (bw * 3 + gap * 2)) / 2, y = 4;
-            FlatButton start = new FlatButton(x, y, bw, 18, Text.literal("Start"), b -> AutoBuyer.start());
-            FlatButton stop = new FlatButton(x + bw + gap, y, bw, 18, Text.literal("Stop"), b -> AutoBuyer.stop());
-            FlatButton scan = new FlatButton(x + (bw + gap) * 2, y, bw, 18, Text.literal("Skaner"), b -> AutoBuyer.startScan());
+            ButtonWidget start = FlatButton.btn(x, y, bw, 18, "Start", false, b -> AutoBuyer.start());
+            ButtonWidget stop = FlatButton.btn(x + bw + gap, y, bw, 18, "Stop", false, b -> AutoBuyer.stop());
+            ButtonWidget scan = FlatButton.btn(x + (bw + gap) * 2, y, bw, 18, "Skaner", false, b -> AutoBuyer.startScan());
             var btns = Screens.getButtons(screen);
             btns.add(start);
             btns.add(stop);
@@ -27,9 +27,9 @@ public class MarketOverlay {
 
             ScreenEvents.beforeRender(screen).register((sc, ctx, mx, my, delta) -> {
                 boolean on = Config.get().enabled;
-                start.selected(on && !AutoBuyer.scanner);
-                scan.selected(on && AutoBuyer.scanner);
-                stop.selected(!on);
+                FlatButton.mark(start, "Start", on && !AutoBuyer.scanner);
+                FlatButton.mark(scan, "Skaner", on && AutoBuyer.scanner);
+                FlatButton.mark(stop, "Stop", !on);
             });
 
             ScreenEvents.afterRender(screen).register((sc, ctx, mx, my, delta) -> {
