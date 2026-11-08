@@ -1,29 +1,21 @@
-name: Build Askalki
-
+name: build
 on:
   push:
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Pobierz kod
-        uses: actions/checkout@v4
-
-      - name: Zainstaluj Jave 21
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-
-      - name: Zbuduj mода
-        run: |
-          chmod +x gradlew
-          ./gradlew build
-
-      - name: Wrzuć jara do pobrania
-        uses: actions/upload-artifact@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
-          name: askalki-jar
+          gradle-version: current
+      - run: gradle build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fullbright-jar
           path: build/libs/*.jar
