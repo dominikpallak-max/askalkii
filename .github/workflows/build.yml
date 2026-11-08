@@ -7,6 +7,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Ułóż pliki w src
+        run: |
+          mkdir -p src/main/java/pl/fullbright src/main/resources
+          mv -f *.java src/main/java/pl/fullbright/ || true
+          mv -f fabric.mod.json src/main/resources/ || true
+          find src -type f
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -19,4 +25,3 @@ jobs:
         with:
           name: fullbright-jar
           path: build/libs/*.jar
-          
