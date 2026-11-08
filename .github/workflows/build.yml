@@ -19,3 +19,4 @@ jobs:
         with:
           name: fullbright-jar
           path: build/libs/*.jar
+          
