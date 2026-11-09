@@ -19,15 +19,14 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class AutoBuyer {
-    public static String status = "Wyłączony";
+    public static String status = "";
     public static int bought = 0;
 
-    // --- tryb skanera ---
     public static boolean scanner = false;
-    public static int scanTotal = 0;     // sztuk na rynku (suma ze skanowanych stron)
-    public static int scanMatched = 0;   // sztuk pasujących do configu (id/nazwa)
-    public static int scanInRange = 0;   // sztuk pasujących do configu I w widełkach cen (snajp)
-    public static int scanPages = 0;     // ile stron przeskanowano
+    public static int scanTotal = 0;     // "Baza": sztuk na rynku
+    public static int scanMatched = 0;   // sztuk z configu
+    public static int scanInRange = 0;   // "Snajper": z configu i w widełkach cen
+    public static int scanPages = 0;
     public static int scanPagesTotal = 0;
     public static boolean scanDone = false;
     private static final Map<Integer, int[]> visited = new HashMap<>();
@@ -39,25 +38,25 @@ public class AutoBuyer {
     private static int emptyScans = 0;
     private static final Pattern PAGE = Pattern.compile("(\\d+)\\s*/\\s*(\\d+)");
 
-    // ---- sterowanie z przycisków ----
+    public static String state() {
+        Config c = Config.get();
+        if (!c.enabled) return scanner && scanDone ? "Skan zakończony" : "Zatrzymany";
+        return scanner ? "Skanuję" : "Działa";
+    }
+
     public static void start() {
-        scanner = false;
-        pending = null;
+        scanner = false; pending = null; status = "";
         Config.get().enabled = true;
     }
 
     public static void stop() {
-        Config.get().enabled = false;
-        pending = null;
-        status = "Zatrzymano";
+        Config.get().enabled = false; pending = null; status = "";
     }
 
     public static void startScan() {
-        scanner = true;
-        scanDone = false;
-        visited.clear();
+        scanner = true; scanDone = false; visited.clear();
         scanTotal = scanMatched = scanInRange = scanPages = scanPagesTotal = 0;
-        pending = null;
+        pending = null; status = "";
         Config.get().enabled = true;
     }
 
@@ -77,9 +76,24 @@ public class AutoBuyer {
         return e.nameContains.isBlank() || lowName.contains(e.nameContains.toLowerCase(Locale.ROOT));
     }
 
+    /** Zwraca {aktualna, wszystkie, 1 jeśli wskaźnik jest w dolnym rzędzie} albo null. */
+    private static int[] pageInfo(GenericContainerScreen s, GenericContainerScreenHandler h, int navStart, int n) {
+        Matcher m = PAGE.matcher(PriceParser.clean(s.getTitle().getString()));
+        if (m.find()) return new int[]{Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)), 0};
+        for (int i = navStart; i < n; i++) {
+            ItemStack st = h.getSlot(i).getStack();
+            if (st.isEmpty()) continue;
+            StringBuilder sb = new StringBuilder(PriceParser.clean(st.getName().getString()));
+            for (String l : lore(st)) sb.append(' ').append(PriceParser.clean(l));
+            Matcher mm = PAGE.matcher(sb);
+            if (mm.find()) return new int[]{Integer.parseInt(mm.group(1)), Integer.parseInt(mm.group(2)), 1};
+        }
+        return null;
+    }
+
     public static void tick(MinecraftClient mc) {
         Config c = Config.get();
-        if (!c.enabled) { if (!scanner || !scanDone) status = "Wyłączony"; return; }
+        if (!c.enabled) return;
         if (mc.player == null || mc.interactionManager == null) return;
         if (!(mc.currentScreen instanceof GenericContainerScreen s)) { status = "Otwórz /ah"; return; }
         if (!s.getTitle().getString().toLowerCase(Locale.ROOT).contains(c.marketTitle.toLowerCase(Locale.ROOT))) {
@@ -89,9 +103,11 @@ public class AutoBuyer {
         if (now < nextAt) return;
 
         GenericContainerScreenHandler h = s.getScreenHandler();
-        int n = Math.min(h.getRows() * 9, h.slots.size());
+        int rows = h.getRows();
+        int n = Math.min(rows * 9, h.slots.size());
+        int navStart = (rows - 1) * 9;
 
-        // 1) ekran potwierdzenia -> klik ZAKUP (tylko tryb kupowania)
+        // 1) ekran potwierdzenia -> klik ZAKUP
         if (!scanner) {
             for (int i = 0; i < n; i++) {
                 ItemStack st = h.getSlot(i).getStack();
@@ -114,18 +130,24 @@ public class AutoBuyer {
             if (pending != null && now - pendingAt > 3000) pending = null;
         }
 
-        // numer strony
-        int cur = -1, total = -1;
-        if (c.pageSlot >= 0 && c.pageSlot < n) {
-            ItemStack ps = h.getSlot(c.pageSlot).getStack();
-            StringBuilder sb = new StringBuilder(PriceParser.clean(ps.getName().getString()));
-            for (String l : lore(ps)) sb.append(' ').append(PriceParser.clean(l));
-            Matcher m = PAGE.matcher(sb);
-            if (m.find()) { cur = Integer.parseInt(m.group(1)); total = Integer.parseInt(m.group(2)); }
+        if (rows < 5) { status = "Czekam na rynek..."; nextAt = now + 100; return; }
+
+        // 2) strona + sloty (wykrywane automatycznie)
+        int[] pg = pageInfo(s, h, navStart, n);
+        int cur = pg == null ? -1 : pg[0], total = pg == null ? -1 : pg[1];
+        boolean hasNav = pg != null && pg[2] == 1;
+        int first = hasNav ? 9 : 0, last = navStart - 1;
+
+        int prevSlot = navStart, nextSlot = n - 1;
+        for (int i = navStart; i < n; i++) {
+            ItemStack st = h.getSlot(i).getStack();
+            if (st.isEmpty()) continue;
+            String nm = PriceParser.clean(st.getName().getString()).toLowerCase(Locale.ROOT);
+            if (nm.contains("nast") || nm.contains("next") || nm.contains("dalej") || nm.contains("→")) nextSlot = i;
+            else if (nm.contains("poprz") || nm.contains("prev") || nm.contains("wstecz") || nm.contains("←")) prevSlot = i;
         }
 
-        // 2) skan strony
-        int first = Math.max(0, c.firstItemSlot), last = Math.min(c.lastItemSlot, n - 1);
+        // 3) skan strony
         int nonEmpty = 0, pTotal = 0, pMatched = 0, pInRange = 0;
         for (int i = first; i <= last; i++) {
             ItemStack st = h.getSlot(i).getStack();
@@ -133,6 +155,7 @@ public class AutoBuyer {
             nonEmpty++;
             pTotal += st.getCount();
             String id = Registries.ITEM.getId(st.getItem()).toString();
+            if (scanner) Config.addSeen(id, PriceParser.clean(st.getName().getString()));
             String name = PriceParser.clean(st.getName().getString()).toLowerCase(Locale.ROOT);
             for (Config.Entry e : c.entries) {
                 if (!matches(e, id, name)) continue;
@@ -154,12 +177,11 @@ public class AutoBuyer {
             }
         }
 
-        if (nonEmpty == 0 && emptyScans++ < 6) { status = "Ładowanie..."; nextAt = now + c.pageDelayMs; return; }
+        if (nonEmpty == 0 && emptyScans++ < 6) { status = "Ładowanie..."; nextAt = now + Math.max(100, c.pageDelayMs); return; }
         emptyScans = 0;
 
-        // 2b) skaner: zapisz wyniki strony i sprawdź czy koniec
         if (scanner) {
-            if (cur < 0 || total < 0) { // nie znamy stron -> jedna strona
+            if (cur < 0 || total < 0) {
                 visited.put(1, new int[]{pTotal, pMatched, pInRange});
                 recalc(1);
                 finishScan();
@@ -170,9 +192,8 @@ public class AutoBuyer {
             if (visited.size() >= total) { finishScan(); return; }
         }
 
-        // 3) przewijanie
+        // 4) przewijanie
         if (scanner) {
-            // skaner: idź w prawo do końca, potem w lewo po brakujące strony
             if (total > 0 && cur >= total) dir = -1;
             else if (cur == 1) dir = 1;
             else if (cur > 0 && visited.containsKey(cur + 1) && !visited.containsKey(cur - 1)) dir = -1;
@@ -187,9 +208,8 @@ public class AutoBuyer {
                 }
             }
         }
-        int slot = dir > 0 ? c.nextSlot : c.prevSlot;
-        if (slot >= 0 && slot < n) click(mc, h, slot);
-        status = (scanner ? "Skanuję " : "Strona ") + (cur > 0 ? cur + "/" + total : "?") + (dir > 0 ? " ->" : " <-");
+        click(mc, h, dir > 0 ? nextSlot : prevSlot);
+        status = "Strona " + (cur > 0 ? cur + "/" + total : "?") + (dir > 0 ? " ->" : " <-");
         nextAt = now + c.pageDelayMs;
     }
 
@@ -203,6 +223,7 @@ public class AutoBuyer {
     private static void finishScan() {
         scanDone = true;
         Config.get().enabled = false;
+        Config.save();
         status = "Skan zakończony";
     }
 }
